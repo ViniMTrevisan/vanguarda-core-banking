@@ -26,6 +26,212 @@ src/main/java/com/vinicius/vanguarda/
 ./mvnw spring-boot:run
 ```
 
+## Manual test guide (local, without automated tests)
+
+If your containers are already up, use this checklist to validate the system manually.
+
+### 1) Validate that everything is running
+
+```bash
+docker compose ps
+```
+
+Expected ports:
+- App: `http://localhost:8080`
+- Grafana: `http://localhost:3000`
+- Prometheus: `http://localhost:9090`
+- RabbitMQ UI: `http://localhost:15672`
+
+Quick health checks:
+
+```bash
+curl -sS http://localhost:8080/actuator/health
+curl -sS -o /dev/null -w "%{http_code}\n" http://localhost:8080/swagger-ui/index.html
+curl -sS -o /dev/null -w "%{http_code}\n" http://localhost:8080/api-docs
+```
+
+### 2) Access Grafana and Prometheus
+
+Prometheus:
+- URL: `http://localhost:9090`
+- Check target status in `Status -> Targets` (job `vcb` should be `UP`).
+- Or by API:
+
+```bash
+curl -sS http://localhost:9090/api/v1/targets
+```
+
+Grafana:
+- URL: `http://localhost:3000`
+- Login: `admin` / `admin`
+- Datasource `Prometheus` is provisioned automatically.
+- Dashboard `VCB — Core Banking` is provisioned automatically.
+
+### 3) Test the API manually with curl (happy path)
+
+Set the base URL:
+
+```bash
+BASE_URL=http://localhost:8080
+```
+
+Create account A:
+
+```bash
+curl -sS -X POST "$BASE_URL/v1/accounts" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "ownerId": "user-a",
+    "ownerName": "User A",
+    "currency": "BRL",
+    "initialBalance": 1000.00
+  }'
+```
+
+Create account B:
+
+```bash
+curl -sS -X POST "$BASE_URL/v1/accounts" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "ownerId": "user-b",
+    "ownerName": "User B",
+    "currency": "BRL",
+    "initialBalance": 200.00
+  }'
+```
+
+Save `accountId` values from both responses as `ACCOUNT_A` and `ACCOUNT_B`.
+
+Transfer money (`X-Idempotency-Key` is required and must be a UUID):
+
+```bash
+IDEMPOTENCY_KEY=$(python3 -c "import uuid; print(uuid.uuid4())")
+
+curl -i -sS -X POST "$BASE_URL/v1/transactions" \
+  -H 'Content-Type: application/json' \
+  -H "X-Idempotency-Key: $IDEMPOTENCY_KEY" \
+  -d "{
+    \"sourceAccountId\": \"$ACCOUNT_A\",
+    \"targetAccountId\": \"$ACCOUNT_B\",
+    \"amount\": 150.00,
+    \"description\": \"Manual transfer\",
+    \"metadata\": {\"channel\": \"curl\"}
+  }"
+```
+
+Read balances:
+
+```bash
+curl -sS "$BASE_URL/v1/accounts/$ACCOUNT_A/balance"
+curl -sS "$BASE_URL/v1/accounts/$ACCOUNT_B/balance"
+```
+
+List account statement:
+
+```bash
+curl -sS "$BASE_URL/v1/accounts/$ACCOUNT_A/transactions?page=0&size=20"
+```
+
+### 4) Error scenarios you should validate
+
+Missing idempotency key (expect `400`):
+
+```bash
+curl -i -sS -X POST "$BASE_URL/v1/transactions" \
+  -H 'Content-Type: application/json' \
+  -d "{
+    \"sourceAccountId\": \"$ACCOUNT_A\",
+    \"targetAccountId\": \"$ACCOUNT_B\",
+    \"amount\": 10.00
+  }"
+```
+
+Insufficient balance (expect `422`):
+
+```bash
+curl -i -sS -X POST "$BASE_URL/v1/transactions" \
+  -H 'Content-Type: application/json' \
+  -H "X-Idempotency-Key: $(python3 -c \"import uuid; print(uuid.uuid4())\")" \
+  -d "{
+    \"sourceAccountId\": \"$ACCOUNT_A\",
+    \"targetAccountId\": \"$ACCOUNT_B\",
+    \"amount\": 999999.00
+  }"
+```
+
+Idempotency replay (same key + same payload, expect `200` and header `X-Idempotency-Replayed: true`):
+
+```bash
+curl -i -sS -X POST "$BASE_URL/v1/transactions" \
+  -H 'Content-Type: application/json' \
+  -H "X-Idempotency-Key: $IDEMPOTENCY_KEY" \
+  -d "{
+    \"sourceAccountId\": \"$ACCOUNT_A\",
+    \"targetAccountId\": \"$ACCOUNT_B\",
+    \"amount\": 150.00,
+    \"description\": \"Manual transfer\",
+    \"metadata\": {\"channel\": \"curl\"}
+  }"
+```
+
+### 5) Verify observability after requests
+
+Check exposed metrics:
+
+```bash
+curl -sS http://localhost:8080/actuator/prometheus | grep '^vcb_'
+```
+
+Useful metrics to inspect:
+- `vcb_transactions_total{status="COMPLETED"}`
+- `vcb_transactions_total{status="FAILED"}`
+- `vcb_idempotency_hits_total{replayed="true"}`
+- `vcb_idempotency_hits_total{replayed="false"}`
+- `vcb_transactions_duration_seconds_*`
+- `vcb_balance_query_duration_seconds_*`
+- `vcb_distributed_lock_failures_total`
+
+In Prometheus expression browser (`http://localhost:9090`), try:
+
+```promql
+sum(rate(vcb_transactions_total[1m]))
+sum(rate(vcb_transactions_total{status="FAILED"}[1m]))
+sum(rate(vcb_idempotency_hits_total{replayed="true"}[5m]))
+```
+
+In Grafana (`http://localhost:3000`), open dashboard `VCB — Core Banking` and verify panels react after running the curl commands.
+
+### 6) Test with Postman
+
+You can import:
+- OpenAPI from `http://localhost:8080/api-docs`, or
+- Collection file in this repository:
+  - `postman/vanguarda-core-banking-local.postman_collection.json`
+
+Recommended Postman variables:
+- `baseUrl`: `http://localhost:8080`
+- `accountAId`
+- `accountBId`
+- `transactionId`
+- `idempotencyKey`
+
+Collection requests include:
+- health check
+- create/list/get account
+- transfer transaction
+- idempotency replay
+- missing idempotency key
+- insufficient balance
+- prometheus scrape endpoint
+
+### 7) Troubleshooting
+
+- `400 MISSING_IDEMPOTENCY_KEY`: header missing or not a valid UUID format.
+- `422 INSUFFICIENT_BALANCE`: transfer amount is bigger than source account balance.
+- Grafana empty panels: run a few transactions first, then check Prometheus target `vcb` is `UP`.
+- App not reachable on `8080`: confirm `docker compose ps` and check app logs with `docker compose logs app --tail=200`.
+
 ---
 
 Made with ❤️ using [Kybernus Pro](https://kybernus.dev/pro)
