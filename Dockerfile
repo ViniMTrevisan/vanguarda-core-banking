@@ -1,0 +1,41 @@
+# Production Dockerfile for vanguarda-core-banking
+
+# Build stage
+FROM maven:3.9-eclipse-temurin-21-alpine AS builder
+
+WORKDIR /app
+
+# Copy pom.xml and install dependencies
+COPY pom.xml .
+RUN mvn dependency:go-offline
+
+# Copy source code
+COPY src ./src
+
+# Build application
+RUN mvn package -DskipTests
+
+# Production stage
+FROM eclipse-temurin:21-jre-alpine AS production
+
+WORKDIR /app
+
+# Create non-root user
+RUN addgroup -g 1001 -S spring && \
+  adduser -S spring -u 1001
+
+# Copy built application
+COPY --from=builder --chown=spring:spring /app/target/*.jar app.jar
+
+# Switch to non-root user
+USER spring
+
+# Expose port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1
+
+# Start application
+CMD ["java", "-jar", "app.jar"]

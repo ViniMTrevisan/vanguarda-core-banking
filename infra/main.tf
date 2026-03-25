@@ -1,0 +1,107 @@
+# Terraform Infrastructure for vanguarda-core-banking
+
+terraform {
+  required_version = ">= 1.0.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.5"
+    }
+  }
+
+# Uncomment for remote state (recommended for production)
+# backend "s3" {
+# bucket = "your-terraform-state-bucket"
+# key = "vanguarda-core-banking/terraform.tfstate"
+# region = "us-east-1"
+# encrypt = true
+# dynamodb_table = "terraform-locks"
+# }
+}
+
+provider "aws" {
+  region = var.aws_region
+}
+
+# Variables
+variable "aws_region" {
+  description = "AWS region"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "environment" {
+  description = "Environment name (dev, staging, prod)"
+  type        = string
+  default     = "dev"
+}
+
+variable "app_name" {
+  description = "Application name"
+  type        = string
+  default     = "vanguarda-core-banking"
+}
+
+# VPC
+module "vpc" {
+  source = "./modules/vpc"
+
+  app_name    = var.app_name
+  environment = var.environment
+}
+
+# ECS Cluster
+module "ecs" {
+  source = "./modules/ecs"
+
+  app_name                    = var.app_name
+  environment                 = var.environment
+  vpc_id                      = module.vpc.vpc_id
+  public_subnet_ids           = module.vpc.public_subnet_ids
+  private_subnet_ids          = module.vpc.private_subnet_ids
+  alb_security_group_id       = module.vpc.alb_security_group_id
+  ecs_tasks_security_group_id = module.vpc.ecs_tasks_security_group_id
+}
+
+# RDS PostgreSQL
+module "rds" {
+  source = "./modules/rds"
+
+  app_name          = var.app_name
+  environment       = var.environment
+  vpc_id            = module.vpc.vpc_id
+  subnet_ids        = module.vpc.private_subnet_ids
+  security_group_id = module.vpc.db_security_group_id
+}
+
+# Outputs
+output "vpc_id" {
+  value = module.vpc.vpc_id
+}
+
+output "ecs_cluster_name" {
+  value = module.ecs.cluster_name
+}
+
+output "ecr_repository_url" {
+  value = module.ecs.ecr_repository_url
+}
+
+output "alb_dns_name" {
+  value       = module.ecs.alb_dns_name
+  description = "The DNS name of the ALB to access the application"
+}
+
+output "rds_endpoint" {
+  value     = module.rds.endpoint
+  sensitive = true
+}
+
+output "db_name" {
+  value = module.rds.db_name
+}

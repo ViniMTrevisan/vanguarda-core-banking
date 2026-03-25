@@ -1,0 +1,8 @@
+{
+  "projectName": "vanguarda-core-banking",
+  "stack": "java-spring",
+  "architecture": "clean",
+  "buildTool": "maven",
+  "customTemplate": null,
+  "createdAt": "2026-03-25T17:39:35.161Z"
+}
