@@ -1,0 +1,326 @@
+{
+  "info": {
+    "_postman_id": "b6a73ce4-f4be-4f5d-88d3-d2d7f4a28fcb",
+    "name": "Vanguarda Core Banking - Local",
+    "description": "Manual local validation flow for vanguarda-core-banking.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 - Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/actuator/health",
+          "host": ["{{baseUrl}}"],
+          "path": ["actuator", "health"]
+        }
+      }
+    },
+    {
+      "name": "01 - Create Account A",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ownerId\": \"user-a\",\n  \"ownerName\": \"User A\",\n  \"currency\": \"BRL\",\n  \"initialBalance\": 1000.00\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/accounts",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "accounts"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 201', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "var json = pm.response.json();",
+              "pm.collectionVariables.set('accountAId', json.accountId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Create Account B",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"ownerId\": \"user-b\",\n  \"ownerName\": \"User B\",\n  \"currency\": \"BRL\",\n  \"initialBalance\": 200.00\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/accounts",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "accounts"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 201', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "var json = pm.response.json();",
+              "pm.collectionVariables.set('accountBId', json.accountId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Get Account A",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/accounts/{{accountAId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "accounts", "{{accountAId}}"]
+        }
+      }
+    },
+    {
+      "name": "04 - Create Transfer (201)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.collectionVariables.get('idempotencyKey')) {",
+              "  pm.collectionVariables.set('idempotencyKey', pm.variables.replaceIn('{{$guid}}'));",
+              "}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 201', function () {",
+              "  pm.response.to.have.status(201);",
+              "});",
+              "var json = pm.response.json();",
+              "pm.collectionVariables.set('transactionId', json.transactionId);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Idempotency-Key", "value": "{{idempotencyKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sourceAccountId\": \"{{accountAId}}\",\n  \"targetAccountId\": \"{{accountBId}}\",\n  \"amount\": 150.00,\n  \"description\": \"Manual transfer\",\n  \"metadata\": {\n    \"channel\": \"postman\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "transactions"]
+        }
+      }
+    },
+    {
+      "name": "05 - Idempotency Replay (200 + header)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Idempotency-Key", "value": "{{idempotencyKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sourceAccountId\": \"{{accountAId}}\",\n  \"targetAccountId\": \"{{accountBId}}\",\n  \"amount\": 150.00,\n  \"description\": \"Manual transfer\",\n  \"metadata\": {\n    \"channel\": \"postman\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "transactions"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "pm.test('Replay header exists', function () {",
+              "  pm.expect(pm.response.headers.get('X-Idempotency-Replayed')).to.eql('true');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Missing Idempotency Key (400)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sourceAccountId\": \"{{accountAId}}\",\n  \"targetAccountId\": \"{{accountBId}}\",\n  \"amount\": 10.00\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "transactions"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 400', function () {",
+              "  pm.response.to.have.status(400);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Insufficient Balance (422)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.collectionVariables.set('insufficientKey', pm.variables.replaceIn('{{$guid}}'));"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-Idempotency-Key", "value": "{{insufficientKey}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"sourceAccountId\": \"{{accountAId}}\",\n  \"targetAccountId\": \"{{accountBId}}\",\n  \"amount\": 999999.00\n}"
+        },
+        "url": {
+          "raw": "{{baseUrl}}/v1/transactions",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "transactions"]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status is 422', function () {",
+              "  pm.response.to.have.status(422);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 - Get Account A Balance",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/accounts/{{accountAId}}/balance",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "accounts", "{{accountAId}}", "balance"]
+        }
+      }
+    },
+    {
+      "name": "09 - Get Account B Balance",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/accounts/{{accountBId}}/balance",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "accounts", "{{accountBId}}", "balance"]
+        }
+      }
+    },
+    {
+      "name": "10 - Get Account A Statement",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/accounts/{{accountAId}}/transactions?page=0&size=20",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "accounts", "{{accountAId}}", "transactions"],
+          "query": [
+            { "key": "page", "value": "0" },
+            { "key": "size", "value": "20" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "11 - Get Transaction by ID",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/v1/transactions/{{transactionId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["v1", "transactions", "{{transactionId}}"]
+        }
+      }
+    },
+    {
+      "name": "12 - Prometheus Metrics",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/actuator/prometheus",
+          "host": ["{{baseUrl}}"],
+          "path": ["actuator", "prometheus"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "accountAId", "value": "" },
+    { "key": "accountBId", "value": "" },
+    { "key": "transactionId", "value": "" },
+    { "key": "idempotencyKey", "value": "" },
+    { "key": "insufficientKey", "value": "" }
+  ]
+}

@@ -1,0 +1,35 @@
+# OS
+.DS_Store
+**/.DS_Store
+._*
+.AppleDouble
+.LSOverride
+
+# Build outputs / temp
+target/
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.pid
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+
+# Env / secrets
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+secrets/
+
+# Runtime / test artifacts
+coverage/
+*.out
+PRD.md
