@@ -221,6 +221,60 @@ resource "aws_security_group" "db" {
   }
 }
 
+# Security Group for ElastiCache (Redis)
+resource "aws_security_group" "elasticache" {
+  name        = "${var.app_name}-${var.environment}-redis-sg"
+  description = "Security group for ElastiCache Redis"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs_tasks.id]
+    description     = "Allow Redis access from ECS tasks"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.app_name}-${var.environment}-redis-sg"
+    Environment = var.environment
+  }
+}
+
+# Security Group for Amazon MQ (RabbitMQ)
+resource "aws_security_group" "amazonmq" {
+  name        = "${var.app_name}-${var.environment}-mq-sg"
+  description = "Security group for Amazon MQ RabbitMQ"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = 5671
+    to_port         = 5671
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs_tasks.id]
+    description     = "Allow AMQPS access from ECS tasks"
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.app_name}-${var.environment}-mq-sg"
+    Environment = var.environment
+  }
+}
+
 # Outputs
 output "vpc_id" {
   value = aws_vpc.main.id
@@ -244,4 +298,12 @@ output "alb_security_group_id" {
 
 output "ecs_tasks_security_group_id" {
   value = aws_security_group.ecs_tasks.id
+}
+
+output "elasticache_security_group_id" {
+  value = aws_security_group.elasticache.id
+}
+
+output "amazonmq_security_group_id" {
+  value = aws_security_group.amazonmq.id
 }

@@ -43,6 +43,11 @@ spring:
     virtual-host: /vcb
 
 vcb:
+  security:
+    jwt-secret: ${JWT_SECRET:bXVpdG8tc2VjcmV0by1jaGF2ZS1kZXYtYXBlbmFzLW5hby11c2FyLWVtLXByb2R1Y2Fv}
+    jwt-expiration-hours: 24
+    auth-client-id: ${AUTH_CLIENT_ID:vcb-admin}
+    auth-client-secret: ${AUTH_CLIENT_SECRET:vcb-secret}
   idempotency:
     ttl-hours: 24
     processing-ttl-seconds: 30

@@ -30,7 +30,19 @@ variable "ecs_tasks_security_group_id" {
 
 variable "container_port" {
   type    = number
-  default = 3000
+  default = 8080
+}
+
+variable "ssm_prefix" {
+  type        = string
+  description = "SSM parameter path prefix (e.g. /vanguarda-core-banking/dev)"
+  default     = ""
+}
+
+data "aws_region" "current" {}
+
+locals {
+  ssm_prefix = var.ssm_prefix != "" ? var.ssm_prefix : "/${var.app_name}/${var.environment}"
 }
 
 # ECR Repository
@@ -102,7 +114,7 @@ resource "aws_lb_target_group" "app" {
   target_type = "ip"
 
   health_check {
-    path                = "/health"
+    path                = "/actuator/health"
     healthy_threshold   = 2
     unhealthy_threshold = 10
     timeout             = 30
@@ -161,6 +173,32 @@ resource "aws_iam_role_policy_attachment" "ecs_task_execution_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# Inline policy: allow reading SSM secrets (needed to inject secrets into container)
+resource "aws_iam_role_policy" "ecs_ssm_policy" {
+  name = "${var.app_name}-${var.environment}-ssm-read"
+  role = aws_iam_role.ecs_task_execution_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameters",
+          "ssm:GetParameter",
+          "ssm:GetParametersByPath"
+        ]
+        Resource = "arn:aws:ssm:${data.aws_region.current.name}:*:parameter${local.ssm_prefix}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # IAM Role for ECS Task (the application itself)
 resource "aws_iam_role" "ecs_task_role" {
   name = "${var.app_name}-${var.environment}-ecs-task-role"
@@ -184,17 +222,17 @@ resource "aws_ecs_task_definition" "app" {
   family                   = "${var.app_name}-${var.environment}"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = 256
-  memory                   = 512
+  cpu                      = 512
+  memory                   = 1024
   execution_role_arn       = aws_iam_role.ecs_task_execution_role.arn
   task_role_arn            = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode([
     {
-      name      = "${var.app_name}"
+      name      = var.app_name
       image     = "${aws_ecr_repository.app.repository_url}:latest"
       essential = true
-      
+
       portMappings = [
         {
           containerPort = var.container_port
@@ -204,17 +242,31 @@ resource "aws_ecs_task_definition" "app" {
       ]
 
       environment = [
-        { name = "NODE_ENV", value = var.environment == "prod" ? "production" : "development" },
-        { name = "PORT", value = tostring(var.container_port) }
+        { name = "SPRING_RABBITMQ_SSL_ENABLED", value = "true" },
+        { name = "SPRING_RABBITMQ_PORT", value = "5671" },
+        { name = "SPRING_RABBITMQ_VIRTUAL_HOST", value = "/" },
+        { name = "SPRING_DATA_REDIS_SSL_ENABLED", value = "true" }
       ]
 
-      # Note: Add Secrets (like DB passwords) via SSM Parameter Store dynamically in a real deployment
-      
+      secrets = [
+        { name = "DB_URL", valueFrom = "${local.ssm_prefix}/db-url" },
+        { name = "DB_USER", valueFrom = "${local.ssm_prefix}/db-username" },
+        { name = "DB_PASS", valueFrom = "${local.ssm_prefix}/db-password" },
+        { name = "REDIS_HOST", valueFrom = "${local.ssm_prefix}/redis-host" },
+        { name = "REDIS_PASS", valueFrom = "${local.ssm_prefix}/redis-password" },
+        { name = "RABBITMQ_HOST", valueFrom = "${local.ssm_prefix}/rabbitmq-host" },
+        { name = "RABBITMQ_USER", valueFrom = "${local.ssm_prefix}/rabbitmq-username" },
+        { name = "RABBITMQ_PASS", valueFrom = "${local.ssm_prefix}/rabbitmq-password" },
+        { name = "JWT_SECRET", valueFrom = "${local.ssm_prefix}/jwt-secret" },
+        { name = "AUTH_CLIENT_ID", valueFrom = "${local.ssm_prefix}/auth-client-id" },
+        { name = "AUTH_CLIENT_SECRET", valueFrom = "${local.ssm_prefix}/auth-client-secret" }
+      ]
+
       logConfiguration = {
         logDriver = "awslogs"
         options = {
           "awslogs-group"         = aws_cloudwatch_log_group.ecs.name
-          "awslogs-region"        = "us-east-1"
+          "awslogs-region"        = data.aws_region.current.name
           "awslogs-stream-prefix" = "ecs"
         }
       }
@@ -238,7 +290,7 @@ resource "aws_ecs_service" "app" {
 
   load_balancer {
     target_group_arn = aws_lb_target_group.app.arn
-    container_name   = "${var.app_name}"
+    container_name   = var.app_name
     container_port   = var.container_port
   }
 
@@ -256,8 +308,16 @@ output "cluster_arn" {
   value = aws_ecs_cluster.main.arn
 }
 
+output "service_name" {
+  value = aws_ecs_service.app.name
+}
+
 output "ecr_repository_url" {
   value = aws_ecr_repository.app.repository_url
+}
+
+output "ecr_repository_name" {
+  value = aws_ecr_repository.app.name
 }
 
 output "alb_dns_name" {

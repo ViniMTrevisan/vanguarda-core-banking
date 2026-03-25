@@ -7,6 +7,8 @@ import com.vinicius.vanguarda.domain.exception.MissingIdempotencyKeyException;
 import com.vinicius.vanguarda.domain.exception.TransactionInProgressException;
 import com.vinicius.vanguarda.domain.model.enums.Currency;
 import com.vinicius.vanguarda.domain.model.enums.TransactionStatus;
+import com.vinicius.vanguarda.infrastructure.security.JwtService;
+import com.vinicius.vanguarda.infrastructure.security.SecurityConfig;
 import com.vinicius.vanguarda.infrastructure.web.exception.GlobalExceptionHandler;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +16,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigDecimal;
@@ -27,13 +30,15 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @WebMvcTest(TransactionController.class)
-@Import(GlobalExceptionHandler.class)
+@Import({GlobalExceptionHandler.class, SecurityConfig.class})
+@WithMockUser
 class TransactionControllerTest {
 
     @Autowired MockMvc mockMvc;
     @Autowired ObjectMapper objectMapper;
     @MockBean TransferMoneyUseCase transferMoneyUseCase;
     @MockBean GetTransactionUseCase getTransactionUseCase;
+    @MockBean JwtService jwtService;
 
     @Test
     void shouldReturn201OnSuccessfulTransfer() throws Exception {
