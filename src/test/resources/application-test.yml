@@ -1,0 +1,21 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+
+vcb:
+  idempotency:
+    ttl-hours: 1
+    processing-ttl-seconds: 10
+  distributed-lock:
+    ttl-seconds: 5
+    retry-attempts: 100
+    retry-interval-ms: 200
+  transfer:
+    retry-attempts: 20
+    retry-backoff-ms: 20
+
+logging:
+  level:
+    com.vinicius.vanguarda: DEBUG
