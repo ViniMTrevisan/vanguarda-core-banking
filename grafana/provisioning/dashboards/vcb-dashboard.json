@@ -1,0 +1,106 @@
+{
+  "title": "VCB — Core Banking",
+  "uid": "vcb-core-banking",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Transactions per Second (TPS)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(vcb_transactions_total[1m]))",
+          "legendFormat": "TPS"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Transfer Latency P50 / P95 / P99",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(vcb_transactions_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(vcb_transactions_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(vcb_transactions_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "P99"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Idempotency Replay Rate",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(vcb_idempotency_hits_total{replayed=\"true\"}[5m])) / sum(rate(vcb_transactions_total[5m])) * 100",
+          "legendFormat": "Replay %"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 10 },
+              { "color": "red", "value": 30 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "title": "Failed Transactions by Status",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(vcb_transactions_total{status=\"FAILED\"}[1m])) by (status)",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Distributed Lock Failures",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(vcb_distributed_lock_failures_total[1m]))",
+          "legendFormat": "Lock Failures/s"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "DB Write Latency vs Cache Read Latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(vcb_transactions_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "DB Write P95"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(vcb_balance_query_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "Cache Read P95"
+        }
+      ]
+    }
+  ]
+}
