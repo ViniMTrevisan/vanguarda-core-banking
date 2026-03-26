@@ -5,6 +5,11 @@ spring:
     show-sql: false
 
 vcb:
+  security:
+    jwt-secret: dGVzdC1zZWNyZXQtY2hhdmUtcGFyYS10ZXN0ZXMtYXBlbmFzLW5hby11c2FyLWVtLXByb2R1Y2Fv
+    jwt-expiration-hours: 1
+    auth-client-id: vcb-admin-test
+    auth-client-secret: vcb-test-secret
   idempotency:
     ttl-hours: 1
     processing-ttl-seconds: 10
