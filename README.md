@@ -1,6 +1,22 @@
 # vanguarda-core-banking
 
+![CI/CD](https://github.com/ViniMTrevisan/vanguarda-core-banking/actions/workflows/ci-cd.yml/badge.svg)
+![Java](https://img.shields.io/badge/Java-21-blue)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4-brightgreen)
+![Terraform](https://img.shields.io/badge/IaC-Terraform-7B42BC)
+![Docker](https://img.shields.io/badge/Container-Docker-2496ED)
+
 Core banking transfer service focused on **consistency**, **idempotency**, and **operability**.
+
+## Live on AWS
+
+Health check (ECS Fargate + ALB):
+
+```bash
+curl http://vanguarda-core-banking-dev-alb-1678019189.us-east-1.elb.amazonaws.com/actuator/health
+```
+
+Returns `{"status":"UP"}` with PostgreSQL, Redis, and RabbitMQ all healthy.
 
 ## Problem this project addresses
 
@@ -109,6 +125,23 @@ Errors are normalized by `GlobalExceptionHandler` into `ApiError`:
 - JUnit 5, Mockito, Testcontainers
 - Docker / Docker Compose
 
+## AWS Infrastructure
+
+Provisioned with Terraform in `infra/`:
+
+| Resource | Service | Details |
+|----------|---------|---------|
+| Compute | ECS Fargate | 512 CPU / 1024 MB RAM |
+| Database | RDS PostgreSQL 16 | db.t3.micro, gp3, encrypted |
+| Cache + Locking | ElastiCache Redis 7 | cache.t3.micro, TLS enabled |
+| Message Broker | Amazon MQ RabbitMQ 3.13 | mq.t3.micro, SINGLE_INSTANCE |
+| Load Balancer | ALB | Health check: `/actuator/health` |
+| Registry | ECR | Docker images |
+| Secrets | SSM Parameter Store | All credentials as SecureString |
+| Networking | VPC | 2 public + 2 private subnets, us-east-1 |
+
+CI/CD (GitHub Actions): `test` → `build & push to ECR` → `deploy to ECS` on every push to `main`.
+
 ## Quick Start
 
 Run the full local stack:
@@ -121,6 +154,55 @@ Or run app only (if dependencies are already running):
 
 ```bash
 ./mvnw spring-boot:run
+```
+
+## Deploy to AWS
+
+### Prerequisites
+
+- AWS CLI configured (`aws configure`)
+- Terraform >= 1.6
+- GitHub Secrets set: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+
+### Provision infrastructure
+
+Create `infra/terraform.tfvars` (not committed — in `.gitignore`):
+
+```hcl
+aws_region         = "us-east-1"
+environment        = "dev"
+app_name           = "vanguarda-core-banking"
+jwt_secret         = "<strong-random-secret>"
+auth_client_id     = "vcb-admin"
+auth_client_secret = "<strong-secret>"
+```
+
+Then apply:
+
+```bash
+cd infra
+terraform init
+terraform apply
+```
+
+Push to `main` to trigger the CI/CD pipeline and deploy to ECS.
+
+### Destroy (stop AWS charges)
+
+Run after screenshots/demos to avoid ongoing costs:
+
+```bash
+cd infra
+terraform destroy
+```
+
+> RDS has `skip_final_snapshot = true` for non-prod — no data snapshot is saved.
+
+Confirm everything was removed:
+
+```bash
+terraform show
+# Expected: "No state."
 ```
 
 ## Manual test guide (local, without automated tests)
