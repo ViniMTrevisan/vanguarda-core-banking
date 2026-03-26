@@ -22,6 +22,12 @@ temp/
 # Env / secrets
 .env
 .env.*
+*.tfvars
+
+# Terraform state (contains plaintext secrets — never commit)
+*.tfstate
+*.tfstate.*
+infra/.terraform/
 *.pem
 *.key
 *.p12
@@ -33,3 +39,5 @@ secrets/
 coverage/
 *.out
 PRD.md
+
+aws*
