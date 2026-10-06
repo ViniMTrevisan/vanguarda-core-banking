@@ -8,7 +8,17 @@
 
 Core banking transfer service focused on **consistency**, **idempotency**, and **operability**.
 
-## Live on AWS
+## Engineering evidence
+
+- **56 automated tests**, including a **100-thread concurrency scenario** with no balance corruption in that test, as recorded in the project portfolio.
+- **Retry safety:** Redis idempotency states and replay responses prevent duplicate processing for completed requests.
+- **Consistency:** PostgreSQL SERIALIZABLE transactions, row locks and deterministic distributed lock ordering protect transfer invariants.
+- **Auditability:** each transfer records paired debit/credit ledger entries and balance snapshots.
+- **Delivery and operations:** Terraform infrastructure, GitHub Actions CI/CD, Prometheus metrics and a provisioned Grafana dashboard.
+
+**Start here:** [Local setup](#quick-start) · [Architecture](#how-it-is-implemented) · [Automated tests](#automated-tests) · [Postman collection](postman/vanguarda-core-banking-local.postman_collection.json)
+
+## AWS deployment example
 
 Health check (ECS Fargate + ALB):
 
@@ -16,7 +26,7 @@ Health check (ECS Fargate + ALB):
 curl http://vanguarda-core-banking-dev-alb-1678019189.us-east-1.elb.amazonaws.com/actuator/health
 ```
 
-Returns `{"status":"UP"}` with PostgreSQL, Redis, and RabbitMQ all healthy.
+Expected healthy response: `{"status":"UP"}` with PostgreSQL, Redis and RabbitMQ available. The AWS endpoint depends on the deployment remaining provisioned; use the local setup below for a reproducible demo.
 
 ## Problem this project addresses
 
